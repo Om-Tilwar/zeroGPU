@@ -133,7 +133,7 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str], na
                         max_context_chars = 3000
                         context = "\n".join(retrieved_chunks)[:max_context_chars]
 
-                        print(f"✏️ Q{index}: Context preview: {context[:100]}...")
+                        print(f"✏️ Q{index}: Context preview: {question}...")
                         answer = await ask_gpt(context, question)
                         return (index, question, answer)
                         

@@ -61,7 +61,7 @@ async def ask_gpt(context: str, question: str) -> str:
         response = await loop.run_in_executor(
             None,
             lambda: client.chat.completions.create(
-                model="llama3-8b-8192",
+                model="moonshotai/kimi-k2-instruct",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
