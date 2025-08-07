@@ -28,19 +28,26 @@ PRIMARY_MODEL = "llama3-8b-8192"
 # Initialize a client for each API key
 clients = [Groq(api_key=key) for key in GROQ_API_KEYS]
 
-# Global counter for round-robin key rotation
+# --- MODIFICATION START ---
+
+# Global counter and lock for thread-safe round-robin
 request_counter = 0
+client_lock = asyncio.Lock()
 
-def get_current_client_info():
-    """Gets the current client based on round-robin rotation."""
+async def get_next_client():
+    """
+    Atomically gets the next client in the rotation. This is now thread-safe.
+    """
     global request_counter
-    client_index = request_counter % len(clients)
-    return clients[client_index], client_index
+    async with client_lock:
+        client_index = request_counter % len(clients)
+        client = clients[client_index]
+        current_request_num = request_counter # Capture for logging
+        request_counter += 1
+        return client, client_index, current_request_num
 
-def rotate_to_next_client():
-    """Moves the counter to the next client in the rotation."""
-    global request_counter
-    request_counter += 1
+# --- MODIFICATION END ---
+
 
 def is_rate_limit_error(error: Exception) -> bool:
     """Checks if an exception is a rate limit error."""
@@ -52,8 +59,9 @@ def is_rate_limit_error(error: Exception) -> bool:
         "too many requests" in error_str
     )
 
-async def make_groq_request(client: Groq, client_index: int, system_prompt: str, user_prompt: str, max_tokens: int = 75):
-    print(f"API key #{client_index + 1} (Request #{request_counter + 1}) for model {PRIMARY_MODEL}")
+async def make_groq_request(client: Groq, client_index: int, request_num: int, system_prompt: str, user_prompt: str, max_tokens: int = 75):
+    # Modified to accept request_num for accurate logging
+    print(f"API key #{client_index + 1} (Request #{request_num + 1}) for model {PRIMARY_MODEL}")
     
     loop = asyncio.get_event_loop()
     
@@ -84,13 +92,14 @@ async def ask_gpt(context: str, question: str) -> str:
 
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
-    # Get the current client from the rotation
-    primary_client, primary_index = get_current_client_info()
+    # --- MODIFICATION START ---
+    # Get the next client atomically
+    primary_client, primary_index, request_num = await get_next_client()
+    # --- MODIFICATION END ---
     
     try:
         # First attempt with the primary client
-        response = await make_groq_request(primary_client, primary_index, system_prompt, user_prompt)
-        rotate_to_next_client()
+        response = await make_groq_request(primary_client, primary_index, request_num, system_prompt, user_prompt)
         return response
         
     except Exception as e:
@@ -104,37 +113,34 @@ async def ask_gpt(context: str, question: str) -> str:
                 if i == primary_index:
                     continue  # Skip the key that just failed
                 
+                # We need to get the next request number for fallback attempts as well
+                fallback_client, fallback_index, fallback_req_num = await get_next_client()
+
                 try:
-                    print(f"Trying fallback API key #{i + 1}...")
-                    response = await make_groq_request(clients[i], i, system_prompt, user_prompt)
-                    rotate_to_next_client()
+                    print(f"Trying fallback API key #{fallback_index + 1}...")
+                    response = await make_groq_request(fallback_client, fallback_index, fallback_req_num, system_prompt, user_prompt)
                     return response
                 except Exception as fallback_error:
-                    print(f"Fallback key #{i + 1} also failed: {fallback_error}")
+                    print(f"Fallback key #{fallback_index + 1} also failed: {fallback_error}")
                     if not is_rate_limit_error(fallback_error):
-                        # If it's a different error, fail fast
-                        rotate_to_next_client()
                         return "Sorry, a non-recoverable error occurred."
 
             # If all keys are rate-limited, start exponential backoff
             print("All API keys appear to be rate-limited. Starting exponential backoff...")
-            for attempt in range(4): # Retry up to 3 times
-                wait_time = (2 ** attempt) * 2  # 2s, 4s, 8s
+            for attempt in range(4): # Retry up to 4 times
+                wait_time = (2 ** attempt) * 2  # 2s, 4s, 8s, 16s
                 print(f"Waiting for {wait_time}s before retry attempt {attempt + 1}...")
                 await asyncio.sleep(wait_time)
                 
+                # Retry with the next available client from rotation
+                retry_client, retry_index, retry_req_num = await get_next_client()
                 try:
-                    # Retry with the original primary client
-                    response = await make_groq_request(primary_client, primary_index, system_prompt, user_prompt)
-                    rotate_to_next_client()
+                    response = await make_groq_request(retry_client, retry_index, retry_req_num, system_prompt, user_prompt)
                     return response
                 except Exception as retry_error:
                     print(f"Retry attempt {attempt + 1} failed: {retry_error}")
 
-            # If all backoff attempts fail
-            rotate_to_next_client()
             return "I'm temporarily unable to process your question due to high API demand. Please try again in a few moments."
     
     # Handle other non-rate-limit errors
-    rotate_to_next_client()
     return "Sorry, I couldn't process your question due to an unexpected error."
