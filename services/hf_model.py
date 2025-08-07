@@ -44,6 +44,7 @@ async def get_next_client():
         request_counter += 1
         return client, client_index, current_request_num
 
+
 async def get_request_number():
     """
     Atomically gets and increments the request counter for logging purposes.
