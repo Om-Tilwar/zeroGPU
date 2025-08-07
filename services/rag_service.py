@@ -27,8 +27,8 @@ def generate_namespace_from_url(url: str) -> str:
         filename = os.path.basename(parsed.path)
         name_without_ext = os.path.splitext(filename)[0]
         
-        # Replace non-alphanumeric characters with underscores and make lowercase
-        namespace = "policy"
+        safe_name = re.sub(r'[^a-zA-Z0-9]', '_', name_without_ext).lower()
+        namespace = safe_name if safe_name else "default_namespace"
         
         if not namespace:
             return "default_namespace"
