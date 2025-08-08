@@ -19,24 +19,32 @@ except Exception as e:
     raise
 
 def generate_namespace_from_url(url: str) -> str:
-    """
-    Generates a namespace from a URL, exactly matching the offline script's logic.
-    This version is intentionally simple to match existing data in Pinecone.
-    """
     try:
+        # 1. Get the filename without the query string or extension
         parsed = urlparse(url)
         filename = os.path.basename(parsed.path)
         name_without_ext = os.path.splitext(filename)[0]
         
-        # This is the original, flawed logic that matches your existing data
-        safe_name = re.sub(r'[^a-zA-Z0-9]', '_', name_without_ext).lower()
+        # 2. Convert to lowercase
+        s = name_without_ext.lower()
         
-        namespace = safe_name if safe_name else "default_namespace"
-        return namespace
+        # 3. Replace all spaces, underscores, and other common separators with a single hyphen
+        s = re.sub(r'[\s_()\[\]]+', '-', s)
+        
+        # 4. Remove any character that is not a letter, number, or hyphen
+        s = re.sub(r'[^a-z0-9-]', '', s)
+        
+        # 5. Remove any leading or trailing hyphens that may have been created
+        s = s.strip('-')
+        
+        # 6. Pinecone namespaces must be 45 characters or less
+        namespace = s[:45]
+
+        return namespace if namespace else "default-namespace"
 
     except Exception as e:
-        print(f"Error generating namespace from URL '{url}': {e}")
-        return "default_namespace"
+        print(f"Error generating robust namespace from URL '{url}': {e}")
+        return "default-namespace"
 
 async def process_documents_and_questions(pdf_url: str, questions: list[str], namespace: str = None) -> dict:
     print(f"Processing questions for PDF URL: {pdf_url}")

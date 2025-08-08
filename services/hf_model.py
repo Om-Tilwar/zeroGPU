@@ -85,8 +85,7 @@ Context: [retrieved text]
 Question: [user question]  
 
 Comprehensive Answer:
-"""
-    )
+"""    )
 
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
