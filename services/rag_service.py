@@ -20,20 +20,20 @@ except Exception as e:
 
 def generate_namespace_from_url(url: str) -> str:
     """
-    Generate a Pinecone-safe namespace from a URL, matching embedding script logic.
+    Generates a namespace from a URL, exactly matching the offline script's logic.
+    This version is intentionally simple to match existing data in Pinecone.
     """
     try:
         parsed = urlparse(url)
         filename = os.path.basename(parsed.path)
         name_without_ext = os.path.splitext(filename)[0]
         
+        # This is the original, flawed logic that matches your existing data
         safe_name = re.sub(r'[^a-zA-Z0-9]', '_', name_without_ext).lower()
+        
         namespace = safe_name if safe_name else "default_namespace"
-        
-        if not namespace:
-            return "default_namespace"
         return namespace
-        
+
     except Exception as e:
         print(f"Error generating namespace from URL '{url}': {e}")
         return "default_namespace"
