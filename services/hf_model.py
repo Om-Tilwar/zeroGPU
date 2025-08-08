@@ -78,7 +78,7 @@ async def ask_gpt(context: str, question: str) -> str:
     Main function with round-robin, fallback, and backoff logic.
     """
     system_prompt = (
-        "You are an insurance policy assistant. Using ONLY the provided text, give a comprehensive answer to the user's question. Make sure to include all relevant conditions, limits and exceptions mentioned in the text. Do not add any information not present in the text. \n\nContext: [retrieved text]\n\nQuestion: [user question]\n\nComprehensive Answer:"
+        "Using ONLY the provided text, give a comprehensive answer to the user's question. Make sure to include all relevant conditions, limits and exceptions mentioned in the text. Do not add any information not present in the text.Avoid elaboration, opinions, or markdown. Use plain text only. Keep responses concise, clear, and under 75 words.Do not use newline characters; respond in a single paragraph. Assume some terms are given in context if its related content is present in context \n\nContext: [retrieved text]\n\nQuestion: [user question]\n\nComprehensive Answer:"
     )
 
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"

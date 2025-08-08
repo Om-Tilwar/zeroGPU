@@ -103,20 +103,24 @@ async def embed_and_upsert(chunks: list[str], namespace: str):
         return {"status": "error", "error": str(e)}
 
 async def retrieve_from_kb(input_params):
+    """
+    Retrieves relevant PARENT chunks from the knowledge base.
+    It searches using child chunk embeddings but returns the larger parent context.
+    """
     try:
         query = input_params.get("query", "")
-        agent_id = input_params.get("agent_id", "")
-        top_k = input_params.get("top_k", 5)
+        agent_id = input_params.get("agent_id", "")  # agent_id is the namespace
+        top_k = input_params.get("top_k", 5) # Retrieve more children to find diverse parents
 
-        if not query:
-            return {"chunks": [], "status": "error", "message": "Query is required"}
-        if not agent_id:
-            return {"chunks": [], "status": "error", "message": "Agent ID is required"}
+        if not query or not agent_id:
+            return {"chunks": [], "status": "error", "message": "Query and Agent ID are required"}
 
-        # Get embedding for query
+        print(f"Retrieving context for query: '{query[:50]}...' from namespace: '{agent_id}'")
+
+        # 1. Get embedding for the user's query
         query_vector = embedding_model.embed_query(query)
 
-        # Search in Pinecone using the vector
+        # 2. Search Pinecone for top_k similar CHILD vectors
         results = index.query(
             vector=query_vector,
             namespace=agent_id,
@@ -124,22 +128,28 @@ async def retrieve_from_kb(input_params):
             include_metadata=True
         )
 
-        content_blocks = []
+        # 3. Extract the PARENT text from metadata and de-duplicate
+        unique_parent_chunks = set()
         for match in results.matches:
-            score = match.score
-            if score > 0.0:
+            # You can tune this score threshold based on your results
+            if match.score > 0.3:
                 metadata = match.metadata or {}
-                # CORRECTED LINE: Use the correct metadata key
-                text = metadata.get("original_text", "")
-                if text:
-                    content_blocks.append(text)
+                parent_text = metadata.get("parent_text")
+                if parent_text:
+                    unique_parent_chunks.add(parent_text)
+        
+        content_blocks = list(unique_parent_chunks)
 
+        if not content_blocks:
+            print(f"⚠️ No relevant parent chunks found for namespace '{agent_id}' with the given query.")
+        else:
+            print(f"✅ Retrieved {len(content_blocks)} unique parent chunk(s).")
+            
         return {"chunks": content_blocks}
 
     except Exception as e:
-        print(f"Error in retrieve_from_kb: {e}")
+        print(f"❌ Error in retrieve_from_kb: {e}")
         return {"chunks": [], "status": "error", "error": str(e)}
-
 # Function routing
 FUNCTION_HANDLERS = {
     "retrieve_from_kb": retrieve_from_kb
